@@ -11,10 +11,6 @@ class MongoDB:
     _db = None
 
     @classmethod
-    def connect_to_db(cls):
-        pass
-
-    @classmethod
     def create_connection(cls):
         URL = settings.MONGODB_URL
         if not URL:
@@ -37,6 +33,7 @@ class MongoDB:
         try:
 
             cls._client = MongoClient(URL, maxPoolSize= MONGO_MAX_POOL_SIZE, minPoolSize= MONGO_MIN_POOL_SIZE, serverSelectionTimeoutMS = MONGO_TIMEOUT_MS)
+            cls._client.admin.command('ping')
             cls._db = cls._client[DATABASE_NAME]
 
             logger.info("Successfully connected to MongoDB server ✅")
@@ -54,7 +51,7 @@ class MongoDB:
         if cls._db:
             return cls._db
         try:
-            cls.connect_to_db()
+            cls.create_connection()
             return cls._db
         except (ConnectionFailure, ConfigurationError) as e:
             logger.critical(f"Failed to connect to MongoDB server ❌")
@@ -69,7 +66,7 @@ class MongoDB:
                 cls._client.close()
                 cls._client = None
                 cls._db = None
-            logger.info("MongoDB connection closed")
+            logger.info("MongoDB connection closed ✅")
         except (ConfigurationError, ConnectionFailure) as e:
-            logger.critical(f"Failed to close MongoDB connection ✅")
+            logger.critical(f"Failed to close MongoDB connection ❌")
             raise e
