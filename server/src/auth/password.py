@@ -9,7 +9,7 @@ class HashPassword:
     Used for Hashing Passwords
     '''
     @classmethod
-    def hash_password(cls, password: str):
+    def hash_password(cls, password: str)-> str:
         try:
             password = password.encode('utf-8')
             hashed_bytes = bcrypt.hashpw(password, bcrypt.gensalt(rounds=cls.BCRYPT_ROUNDS))

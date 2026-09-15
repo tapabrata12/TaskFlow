@@ -48,7 +48,7 @@ class MongoDB:
 
     @classmethod
     def get_db(cls):
-        if cls._db:
+        if cls._db is not None:
             return cls._db
         try:
             cls.create_connection()
@@ -62,7 +62,7 @@ class MongoDB:
     @classmethod
     def close_connection(cls):
         try:
-            if cls._client:
+            if cls._client is not None:
                 cls._client.close()
                 cls._client = None
                 cls._db = None

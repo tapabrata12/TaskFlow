@@ -4,3 +4,5 @@ pymongo
 pydantic
 pydantic_settings
 bcrypt
+jwt
+pyjwt
