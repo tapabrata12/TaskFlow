@@ -6,7 +6,7 @@ from src.db.connect_db import MongoDB
 from src.auth.password import HashPassword
 from src.models.auth_model import create_user_model
 from src.auth.token import Token
-
+from src.config.Env import settings
 router = APIRouter(prefix='/auth', tags=["User Authentication"])
 logger = logging.getLogger(__name__)
 
@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 async def register(user: Signup):
     try:
         db = MongoDB.get_db()
-        collection = db["users"]
-        existing_user = collection.find_one({"email": user.email})
+        collection = db[settings.COLLECTION]
+        email = user.email.lower()
+        existing_user = collection.find_one({"email": email})
 
         if existing_user:
             raise HTTPException(
@@ -24,7 +25,8 @@ async def register(user: Signup):
             )
 
         user_dict = user.model_dump()
-        user_dict["password"] = HashPassword.hash_password(user.password)
+        user_dict["password_hash"] = HashPassword.hash_password(user.password)
+        del user_dict["password"]
         user_model = create_user_model(user_dict)
         collection.insert_one(user_model)
         # Generate the tokens
