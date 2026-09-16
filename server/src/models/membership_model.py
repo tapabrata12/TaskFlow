@@ -6,8 +6,9 @@ from bson import ObjectId
 def create_membership_model(
     user_id: ObjectId,
     project_id: ObjectId,
-    role: str,
+    role: str
 ) -> dict[str, Any]:
+
     return {
         "user_id": user_id,
         "project_id": project_id,
