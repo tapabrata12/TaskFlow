@@ -4,6 +4,7 @@ from src.db.connect_db import MongoDB
 from src.routes.auth import router as auth_router
 from src.routes.project import router as project_router
 from src.routes.membership import router as membership_router
+from src.routes.task import router as task_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -14,6 +15,8 @@ app = FastAPI(lifespan=lifespan,version="0.0.1", description= "Backend of TaskFl
 app.include_router(auth_router)
 app.include_router(membership_router)
 app.include_router(project_router)
+
+app.include_router(task_router)
 @app.get('/')
 def hello():
     return {"message":"Hello world"}
