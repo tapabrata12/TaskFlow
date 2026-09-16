@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 from typing import Any
+from bson import ObjectId
 
 
 def create_membership_model(
-    user_id: str,
-    project_id: str,
+    user_id: ObjectId,
+    project_id: ObjectId,
     role: str,
 ) -> dict[str, Any]:
     return {
