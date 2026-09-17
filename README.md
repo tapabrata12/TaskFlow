@@ -71,7 +71,7 @@ The application validates its MongoDB configuration and connects during startup.
 
 TaskFlow uses MongoDB. Documents use MongoDB `ObjectId` values internally; the API serializes them as strings. There are no relational database foreign-key constraints, so application-level permission checks and references enforce the relationships below.
 
-```text
+```mermaid
 users                         projects
 -----                         --------
 _id ───────────────┐          _id ───────────────────────┐
