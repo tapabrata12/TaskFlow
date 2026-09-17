@@ -72,36 +72,61 @@ The application validates its MongoDB configuration and connects during startup.
 TaskFlow uses MongoDB. Documents use MongoDB `ObjectId` values internally; the API serializes them as strings. There are no relational database foreign-key constraints, so application-level permission checks and references enforce the relationships below.
 
 ```mermaid
-users                         projects
------                         --------
-_id ───────────────┐          _id ───────────────────────┐
-user_name          │          name                        │
-email (normalized) │          description                 │
-password_hash      │          created_by ─────────────────┘ (users._id)
-created_at         │          created_at, updated_at
-updated_at         │
-                   │
-                   ├──── memberships ────┐
-                   │     -----------     │
-                   │     user_id ────────┘
-                   │     project_id ────────> projects._id
-                   │     role: owner | member
-                   │     created_at
-                   │
-                   └──── tasks ──────────┐
-                         -----            │
-                         project_id ──────┴──> projects._id
-                         created_by ─────────> users._id
-                         assignee_id ────────> users._id (optional; must be a member)
-                         title, description, status, priority
-                         due_date, completed_at, created_at, updated_at
+erDiagram
+    USERS ||--o{ MEMBERSHIPS : has
+    PROJECTS ||--o{ MEMBERSHIPS : has
+    USERS ||--o{ PROJECTS : creates
+    PROJECTS ||--o{ TASKS : contains
+    USERS ||--o{ TASKS : creates
+    USERS ||--o{ TASKS : assigned_to
+    TASKS ||--o{ COMMENTS : has
+    USERS ||--o{ COMMENTS : writes
+    PROJECTS ||--o{ COMMENTS : has
 
-planned: comments
-         --------
-         task_id ──────────────────────────> tasks._id
-         project_id ───────────────────────> projects._id
-         author_id ────────────────────────> users._id
-         body, created_at, updated_at
+    USERS {
+        ObjectId _id PK
+        string user_name
+        string email
+        string password_hash
+        datetime created_at
+        datetime updated_at
+    }
+    PROJECTS {
+        ObjectId _id PK
+        string name
+        string description
+        ObjectId created_by FK
+        datetime created_at
+        datetime updated_at
+    }
+    MEMBERSHIPS {
+        ObjectId user_id FK
+        ObjectId project_id FK
+        string role
+        datetime created_at
+    }
+    TASKS {
+        ObjectId _id PK
+        ObjectId project_id FK
+        ObjectId created_by FK
+        ObjectId assignee_id FK
+        string title
+        string description
+        string status
+        string priority
+        datetime due_date
+        datetime completed_at
+        datetime created_at
+        datetime updated_at
+    }
+    COMMENTS {
+        ObjectId task_id FK
+        ObjectId project_id FK
+        ObjectId author_id FK
+        string body
+        datetime created_at
+        datetime updated_at
+    }
 ```
 
 ### Relationship and authorization rules
