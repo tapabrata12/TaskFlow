@@ -85,3 +85,10 @@ class TaskResponse(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+class TaskListResponse(BaseModel):
+    tasks: list[TaskResponse]
+    page: int
+    limit: int
+    total: int
+    total_pages: int

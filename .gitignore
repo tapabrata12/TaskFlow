@@ -1,3 +1,5 @@
+.idea
+postman
 .env
 venv
 __pycache__

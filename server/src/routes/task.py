@@ -13,8 +13,9 @@ from src.auth.dependency import get_current_user
 from src.auth.project_permission import get_project_membership
 from src.db.connect_db import MongoDB
 from src.models.task_model import create_task_model
-from src.schema.Task import CreateTask, TaskResponse, UpdateTask
-
+from src.schema.Task import CreateTask, TaskResponse, UpdateTask, TaskListResponse
+from math import ceil
+from fastapi import Query
 
 router = APIRouter(
     prefix="/projects",
@@ -67,6 +68,158 @@ def task_to_response(task: dict) -> TaskResponse:
         updated_at=task["updated_at"],
     )
 
+
+@router.get(
+    "/{project_id}/tasks",
+    response_model=TaskListResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_tasks(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+    page: int = Query(
+        default=1,
+        ge=1,
+    ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=100,
+    ),
+    assignee_id: str | None = Query(
+        default=None,
+    ),
+    priority: str | None = Query(
+        default=None,
+    ),
+    search: str | None = Query(
+        default=None,
+    ),
+    sort_by: str = Query(
+        default="created_at",
+    ),
+    sort_order: str = Query(
+        default="desc",
+    ),
+):
+    project_object_id = validate_project_id(project_id)
+
+    db = MongoDB.get_db()
+
+    projects = db["projects"]
+    tasks = db["tasks"]
+
+    # Check if project exists
+    project = projects.find_one({
+        "_id": project_object_id
+    })
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    # Check if current user is a project member
+    get_project_membership(
+        project_id=project_object_id,
+        user_id=current_user["_id"],
+    )
+
+    # Allowed fields for sorting
+    allowed_sort_fields = {
+        "created_at": "created_at",
+        "due_date": "due_date",
+        "priority": "priority",
+    }
+
+    if sort_by not in allowed_sort_fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid sort field",
+        )
+
+    if sort_order not in {"asc", "desc"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid sort order",
+        )
+
+    # Validate priority filter
+    allowed_priorities = {
+        "low",
+        "medium",
+        "high",
+    }
+
+    if priority and priority not in allowed_priorities:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid priority",
+        )
+
+    # Base query
+    query = {
+        "project_id": project_object_id
+    }
+
+    # Filter by assignee
+    if assignee_id:
+        assignee_object_id = validate_user_id(assignee_id)
+
+        query["assignee_id"] = assignee_object_id
+
+    # Filter by priority
+    if priority:
+        query["priority"] = priority
+
+    # Search by title
+    if search:
+        query["title"] = {
+            "$regex": search,
+            "$options": "i",
+        }
+
+    # Pagination
+    skip = (page - 1) * limit
+
+    # Total number of matching tasks
+    total = tasks.count_documents(query)
+
+    # Sorting
+    sort_field = allowed_sort_fields[sort_by]
+
+    sort_direction = (
+        1 if sort_order == "asc" else -1
+    )
+
+    # Get tasks from MongoDB
+    cursor = (
+        tasks.find(query)
+        .sort(sort_field, sort_direction)
+        .skip(skip)
+        .limit(limit)
+    )
+
+    task_list = [
+        task_to_response(task)
+        for task in cursor
+    ]
+
+    # Calculate total pages
+    total_pages = (
+        ceil(total / limit)
+        if total
+        else 0
+    )
+
+    return TaskListResponse(
+        tasks=task_list,
+        page=page,
+        limit=limit,
+        total=total,
+        total_pages=total_pages,
+    )
 
 @router.post(
     "/{project_id}/tasks",

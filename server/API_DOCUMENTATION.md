@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-This document describes the authentication API currently implemented by TaskFlow. The service uses stateless JSON Web Tokens (JWTs) for authentication and MongoDB for user storage and refresh-token revocation records.
+This document describes the API currently implemented by TaskFlow: authentication, projects, project memberships, and tasks. The service uses stateless JSON Web Tokens (JWTs) for authentication and MongoDB for persistence.
 
 All request and response bodies use `application/json`, unless stated otherwise. Dates and MongoDB internals are not exposed through the current public API.
 
@@ -354,3 +354,180 @@ FastAPI validation failures return `422 Unprocessable Entity` with a `detail` ar
   ]
 }
 ```
+
+## 9. Projects
+
+All endpoints in this section require an access token. Creating a project also creates an `owner` membership for the caller. Project and user IDs are MongoDB ObjectId strings (24 hexadecimal characters). Project timestamps are ISO 8601 strings.
+
+### Project response
+
+```json
+{
+  "id": "65f000000000000000000001",
+  "name": "Website refresh",
+  "description": "Q2 work",
+  "created_by": "65f000000000000000000002",
+  "created_at": "2026-09-17T10:00:00+00:00",
+  "updated_at": "2026-09-17T10:00:00+00:00"
+}
+```
+
+### `POST /projects`
+
+Creates a project and returns `201 Created` with a project response.
+
+```json
+{ "name": "Website refresh", "description": "Q2 work" }
+```
+
+`name` is required (1-100 characters). `description` is optional, defaults to an empty string, and is limited to 500 characters. An unexpected persistence failure returns `500` / `Failed to create project`.
+
+### `GET /projects`
+
+Returns `200 OK` and an array of project responses for every project in which the caller has a membership. Returns an empty array when none exists.
+
+### `GET /projects/{project_id}`
+
+Returns the specified project to a project member. Invalid IDs return `400` / `Invalid project ID`; a non-member receives `403` / `You are not a member of this project`; absent projects return `404` / `Project not found`.
+
+### `PATCH /projects/{project_id}`
+
+Owner-only partial update. Both fields are optional and retain the create constraints.
+
+```json
+{ "name": "Website redesign", "description": "Updated scope" }
+```
+
+An empty body returns the existing project without changing it. A non-owner receives `403` / `Only the project owner can update the project`.
+
+### `DELETE /projects/{project_id}`
+
+Owner-only deletion. Returns `204 No Content`; removes the project and its memberships. It does **not** delete the project's tasks, so task records can remain after deletion. A non-owner receives `403` / `Only the project owner can delete the project`.
+
+## 10. Project memberships
+
+All membership endpoints require an access token. A membership response has this shape:
+
+```json
+{
+  "user_id": "65f000000000000000000003",
+  "user_name": "Grace Hopper",
+  "email": "grace@example.com",
+  "role": "member",
+  "joined_at": "2026-09-17T10:00:00+00:00"
+}
+```
+
+### `POST /projects/{project_id}/members`
+
+Owner-only. Adds a registered user by email and returns `201 Created` with a membership response.
+
+```json
+{ "email": "grace@example.com" }
+```
+
+Returns `404` when the project is missing or the email is unregistered; returns `409` / `User is already a member of this project` for an existing membership. Non-owners receive `403` / `Only the project owner can perform this action`.
+
+### `GET /projects/{project_id}/members`
+
+Available to any project member. Returns `200 OK`:
+
+```json
+{ "members": [/* membership responses */] }
+```
+
+### `DELETE /projects/{project_id}/members/{user_id}`
+
+Owner-only. Returns `204 No Content`. Invalid IDs return `400`; a missing membership returns `404` / `User is not a member of this project`. The owner cannot be removed (`400` / `Project owner cannot be removed`).
+
+## 11. Tasks
+
+All task endpoints require a project membership. Valid statuses are `to-do`, `progress`, and `done`; valid priorities are `low`, `medium`, and `high`. A supplied due date may not be in the past. If assigned, a user must exist and be a member of the same project.
+
+### Task response
+
+```json
+{
+  "id": "65f000000000000000000010",
+  "project_id": "65f000000000000000000001",
+  "title": "Design homepage",
+  "description": "Prepare the first draft",
+  "status": "to-do",
+  "priority": "high",
+  "due_date": "2026-10-01T09:00:00+00:00",
+  "assignee_id": "65f000000000000000000003",
+  "created_by": "65f000000000000000000002",
+  "completed_at": null,
+  "created_at": "2026-09-17T10:00:00+00:00",
+  "updated_at": "2026-09-17T10:00:00+00:00"
+}
+```
+
+### `GET /projects/{project_id}/tasks`
+
+Returns the paginated task contract below. All query parameters are optional.
+
+| Parameter | Default | Valid values / behavior |
+| --- | --- | --- |
+| `page` | `1` | Integer >= 1 |
+| `limit` | `10` | Integer from 1 through 100 |
+| `assignee_id` | none | A valid user ObjectId |
+| `priority` | none | `low`, `medium`, or `high` |
+| `search` | none | Case-insensitive regular-expression search of titles |
+| `sort_by` | `created_at` | `created_at`, `due_date`, or `priority` |
+| `sort_order` | `desc` | `asc` or `desc` |
+
+```json
+{
+  "tasks": [/* task responses */],
+  "page": 1,
+  "limit": 10,
+  "total": 1,
+  "total_pages": 1
+}
+```
+
+Invalid filtering/sorting values return `400` with `Invalid user ID`, `Invalid priority`, `Invalid sort field`, or `Invalid sort order`.
+
+### `POST /projects/{project_id}/tasks`
+
+Creates a task and returns `201 Created` with a task response.
+
+```json
+{
+  "title": "Design homepage",
+  "description": "Prepare the first draft",
+  "status": "to-do",
+  "priority": "high",
+  "due_date": "2026-10-01T09:00:00Z",
+  "assignee_id": "65f000000000000000000003"
+}
+```
+
+`title` is required (1-200 characters). `description` defaults to `""` (maximum 2,000 characters); `status` defaults to `to-do`; `priority` defaults to `medium`; `due_date` and `assignee_id` are optional. Creating a task with status `done` sets `completed_at` to the creation timestamp.
+
+### `PUT /projects/{project_id}/tasks/{task_id}`
+
+Partially updates a task; every task input property is optional. Send `null` for `due_date` or `assignee_id` to clear it. A status change to `done` sets `completed_at`; changing a completed task to another status clears it. Even an empty body updates `updated_at`.
+
+```json
+{ "status": "done", "priority": "high" }
+```
+
+Whitespace-only titles return `400` / `Task title cannot be empty`. A missing task returns `404` / `Task not found`.
+
+### `DELETE /projects/{project_id}/tasks/{task_id}`
+
+Deletes a task and returns `200 OK`:
+
+```json
+{ "message": "Task deleted successfully" }
+```
+
+Invalid task IDs return `400` / `Invalid task ID`; tasks not in the project return `404` / `Task not found`.
+
+## 12. Additional implementation notes
+
+- All project members may create, update, and delete tasks; task creator/assignee ownership is not enforced.
+- `src/routes/task.py` declares `GET /projects/{project_id}/tasks` twice. Runtime routing reaches the first declaration (the paginated response documented above); the duplicate should be removed to avoid ambiguity in generated OpenAPI documentation.
+- As described in section 7, logout records a refresh-token revocation but normally issued refresh tokens contain `sub`, bypassing the current revocation check during refresh. Logout therefore does not yet guarantee server-side refresh-token invalidation.
